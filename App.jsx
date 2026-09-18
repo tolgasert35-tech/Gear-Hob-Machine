@@ -31,7 +31,8 @@ export default function App() {
     setLoading(true);
     setMesaj('');
     try {
-      const response = await axios.post('http://127.0.0.1:8000/api/hesapla', form);
+      // Göreceli yol kullanıldı (Render ve Yerel ortamda ortak çalışır)
+      const response = await axios.post('/api/hesapla', form);
       setSonucData(response.data);
     } catch (err) {
       setMesaj('Bağlantı hatası! Backend sunucusunun çalıştığından emin olun.');
@@ -42,7 +43,7 @@ export default function App() {
 
   const kaydetKombinasyon = async (item) => {
     try {
-      await axios.post('http://localhost:8000/api/kaydet', {
+      await axios.post('/api/kaydet', {
         proje_adi: form.proje_adi,
         derece: form.derece,
         dakika: form.dakika,
@@ -65,7 +66,7 @@ export default function App() {
 
   const kayitlariGetir = async () => {
     try {
-      const res = await axios.get('http://localhost:8000/api/kayitlar');
+      const res = await axios.get('/api/kayitlar');
       setKayitliListe(res.data);
     } catch (err) {
       console.error(err);
