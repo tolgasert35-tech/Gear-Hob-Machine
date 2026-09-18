@@ -1,9 +1,12 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
 import math
+import os
 
 app = FastAPI(title="GearCalc Pro API", version="2.2")
 
@@ -150,13 +153,23 @@ def kayitlari_getir():
         liste.append(dict(row))
         
     return liste
+
+# --- React Frontend Entegrasyonu (Statik Dosyalar ve Kök Rota) ---
+if os.path.exists("dist"):
+    if os.path.exists("dist/assets"):
+        app.mount("/assets", StaticFiles(directory="dist/assets"), name="assets")
+    
+    @app.get("/")
+    def serve_index():
+        return FileResponse("dist/index.html")
+
 if __name__ == "__main__":
     import uvicorn
     import webbrowser
     import threading
 
     def tarayiciyi_ac():
-        webbrowser.open("http://localhost:5173")
+        webbrowser.open("http://localhost:8000")
 
     threading.Timer(1.5, tarayiciyi_ac).start()
     uvicorn.run(app, host="127.0.0.1", port=8000)
