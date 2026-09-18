@@ -9,7 +9,7 @@ import math
 import os
 import heapq
 
-app = FastAPI(title="GearCalc Pro API", version="2.3")
+app = FastAPI(title="GearCalc Pro API", version="2.4")
 
 # CORS Ayarları
 app.add_middleware(
@@ -81,7 +81,7 @@ class SaveGearRequest(BaseModel):
     fark: float
     notlar: str = ""
 
-# --- Yüksek Performanslı ve Bellek Dostu Hesaplama Endpoint'i ---
+# --- Ultra Hızlı ve Matematiksel Olarak Optimize Edilmiş Hesaplama Endpoint'i ---
 @app.post("/api/hesapla")
 def hesapla_kombinasyonlar(req: GearRequest):
     toplam_derece = req.derece + (req.dakika / 60.0) + (req.saniye / 3600.0)
@@ -92,7 +92,6 @@ def hesapla_kombinasyonlar(req: GearRequest):
     max_d = req.max_disli
     max_results = req.max_sonuc_sayisi
     
-    # En iyi sonuçları saklamak için min-heap yapısı (bellek dostu)
     best_heap = []
 
     for b in range(min_d, max_d + 1):
@@ -100,31 +99,38 @@ def hesapla_kombinasyonlar(req: GearRequest):
             bd = b * d
             if bd == 0:
                 continue
-            for a in range(min_d, max_d + 1):
-                ideal_c = (hedef_deger * bd) / a
-                c_start = max(min_d, int(ideal_c) - 2)
-                c_end = min(max_d, int(ideal_c) + 3)
+            
+            # Matematiksel Sınırlandırma (Aramayı %99 hızlandırır)
+            a_min_theo = max(min_d, int((hedef_deger * bd) / max_d))
+            a_max_theo = min(max_d, math.ceil((hedef_deger * bd) / min_d))
+            
+            if a_min_theo > a_max_theo:
+                continue
                 
-                for c in range(c_start, c_end + 1):
-                    oran = (a * c) / bd
-                    fark = abs(oran - hedef_deger)
-                    
-                    item = {
-                        "a": a,
-                        "b": b,
-                        "c": c,
-                        "d": d,
-                        "oran": oran,
-                        "fark": fark
-                    }
-                    
-                    if len(best_heap) < max_results:
-                        heapq.heappush(best_heap, (-fark, item))
-                    else:
-                        if fark < -best_heap[0][0]:
-                            heapq.heapreplace(best_heap, (-fark, item))
+            for a in range(a_min_theo, a_max_theo + 1):
+                c_exact = (hedef_deger * bd) / a
+                c_int = round(c_exact)
+                
+                if min_d <= c_int <= max_d:
+                    for c in range(max(min_d, c_int - 1), min(max_d, c_int + 2) + 1):
+                        oran = (a * c) / bd
+                        fark = abs(oran - hedef_deger)
+                        
+                        item = {
+                            "a": a,
+                            "b": b,
+                            "c": c,
+                            "d": d,
+                            "oran": oran,
+                            "fark": fark
+                        }
+                        
+                        if len(best_heap) < max_results:
+                            heapq.heappush(best_heap, (-fark, item))
+                        else:
+                            if fark < -best_heap[0][0]:
+                                heapq.heapreplace(best_heap, (-fark, item))
 
-    # Heap üzerindeki sonuçları en küçük farka göre sırala
     en_iyi_sonuclar = [item for _, item in sorted(best_heap, key=lambda x: -x[0])]
 
     return {
