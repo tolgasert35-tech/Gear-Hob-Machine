@@ -8,8 +8,9 @@ from datetime import datetime
 import math
 import os
 import heapq
+import traceback
 
-app = FastAPI(title="GearCalc Pro API", version="2.5")
+app = FastAPI(title="GearCalc Pro API", version="2.6")
 
 # CORS Ayarları
 app.add_middleware(
@@ -81,64 +82,67 @@ class SaveGearRequest(BaseModel):
     fark: float
     notlar: str = ""
 
-# --- Güvenli ve Hızlı Hesaplama Endpoint'i ---
+# --- Hata Yakalamalı Hesaplama Endpoint'i ---
 @app.post("/api/hesapla")
 def hesapla_kombinasyonlar(req: GearRequest):
-    toplam_derece = req.derece + (req.dakika / 60.0) + (req.saniye / 3600.0)
-    radyan = math.radians(toplam_derece)
-    hedef_deger = math.sin(radyan) * req.sabit
-    
-    min_d = req.min_disli
-    max_d = req.max_disli
-    max_results = req.max_sonuc_sayisi
-    
-    best_heap = []
+    try:
+        toplam_derece = req.derece + (req.dakika / 60.0) + (req.saniye / 3600.0)
+        radyan = math.radians(toplam_derece)
+        hedef_deger = math.sin(radyan) * req.sabit
+        
+        min_d = req.min_disli
+        max_d = req.max_disli
+        max_results = req.max_sonuc_sayisi
+        
+        best_heap = []
 
-    for b in range(min_d, max_d + 1):
-        for d in range(min_d, max_d + 1):
-            bd = b * d
-            if bd == 0:
-                continue
-            
-            for a in range(min_d, max_d + 1):
-                # c için en yakın teorik değeri hesapla
-                ideal_c = (hedef_deger * bd) / a
-                c_int = round(ideal_c)
+        for b in range(min_d, max_d + 1):
+            for d in range(min_d, max_d + 1):
+                bd = b * d
+                if bd == 0:
+                    continue
                 
-                c_min = max(min_d, c_int - 2)
-                c_max = min(max_d, c_int + 2)
-                
-                for c in range(c_min, c_max + 1):
-                    oran = (a * c) / bd
-                    fark = abs(oran - hedef_deger)
+                for a in range(min_d, max_d + 1):
+                    ideal_c = (hedef_deger * bd) / a
+                    c_int = round(ideal_c)
                     
-                    item = {
-                        "a": a,
-                        "b": b,
-                        "c": c,
-                        "d": d,
-                        "oran": oran,
-                        "fark": fark
-                    }
+                    c_min = max(min_d, c_int - 2)
+                    c_max = min(max_d, c_int + 2)
                     
-                    if len(best_heap) < max_results:
-                        heapq.heappush(best_heap, (-fark, item))
-                    else:
-                        if fark < -best_heap[0][0]:
-                            heapq.heapreplace(best_heap, (-fark, item))
+                    for c in range(c_min, c_max + 1):
+                        oran = (a * c) / bd
+                        fark = abs(oran - hedef_deger)
+                        
+                        item = {
+                            "a": a,
+                            "b": b,
+                            "c": c,
+                            "d": d,
+                            "oran": oran,
+                            "fark": fark
+                        }
+                        
+                        if len(best_heap) < max_results:
+                            heapq.heappush(best_heap, (-fark, item))
+                        else:
+                            if fark < -best_heap[0][0]:
+                                heapq.heapreplace(best_heap, (-fark, item))
 
-    # Eğer hiç sonuç bulunamadıysa boş liste dön
-    if not best_heap:
-        en_iyi_sonuclar = []
-    else:
-        en_iyi_sonuclar = [item for _, item in sorted(best_heap, key=lambda x: -x[0])]
+        if not best_heap:
+            en_iyi_sonuclar = []
+        else:
+            en_iyi_sonuclar = [item for _, item in sorted(best_heap, key=lambda x: -x[0])]
 
-    return {
-        "hedef_deger": round(hedef_deger, 9),
-        "toplam_derece": round(toplam_derece, 4),
-        "sinus_degeri": round(math.sin(radyan), 9),
-        "kombinasyonlar": en_iyi_sonuclar
-    }
+        return {
+            "hedef_deger": round(hedef_deger, 9),
+            "toplam_derece": round(toplam_derece, 4),
+            "sinus_degeri": round(math.sin(radyan), 9),
+            "kombinasyonlar": en_iyi_sonuclar
+        }
+    except Exception as e:
+        hata_detayi = traceback.format_exc()
+        print("HATA OLUŞTU:", hata_detayi)
+        raise HTTPException(status_code=400, detail=str(e))
 
 # --- Veritabanı Kayıt Endpoint'i ---
 @app.post("/api/kaydet")
