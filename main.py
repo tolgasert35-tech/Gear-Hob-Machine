@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 import sqlite3
 from datetime import datetime
@@ -10,7 +10,7 @@ import os
 import heapq
 import traceback
 
-app = FastAPI(title="GearCalc Pro API", version="2.6")
+app = FastAPI(title="GearCalc Pro API", version="2.7")
 
 # CORS Ayarları
 app.add_middleware(
@@ -82,7 +82,7 @@ class SaveGearRequest(BaseModel):
     fark: float
     notlar: str = ""
 
-# --- Hata Yakalamalı Hesaplama Endpoint'i ---
+# --- Şeffaf Hata Yakalamalı Hesaplama Endpoint'i ---
 @app.post("/api/hesapla")
 def hesapla_kombinasyonlar(req: GearRequest):
     try:
@@ -128,10 +128,7 @@ def hesapla_kombinasyonlar(req: GearRequest):
                             if fark < -best_heap[0][0]:
                                 heapq.heapreplace(best_heap, (-fark, item))
 
-        if not best_heap:
-            en_iyi_sonuclar = []
-        else:
-            en_iyi_sonuclar = [item for _, item in sorted(best_heap, key=lambda x: -x[0])]
+        en_iyi_sonuclar = [item for _, item in sorted(best_heap, key=lambda x: -x[0])] if best_heap else []
 
         return {
             "hedef_deger": round(hedef_deger, 9),
@@ -140,39 +137,41 @@ def hesapla_kombinasyonlar(req: GearRequest):
             "kombinasyonlar": en_iyi_sonuclar
         }
     except Exception as e:
-        hata_detayi = traceback.format_exc()
-        print("HATA OLUŞTU:", hata_detayi)
-        raise HTTPException(status_code=400, detail=str(e))
+        err_msg = traceback.format_exc()
+        print("--- SUNUCU HATASI ---")
+        print(err_msg)
+        return JSONResponse(status_code=500, content={"hata": str(e), "detay": err_msg})
 
 # --- Veritabanı Kayıt Endpoint'i ---
 @app.post("/api/kaydet")
 def kombinasyon_kaydet(item: SaveGearRequest):
-    conn = sqlite3.connect("gearcalc.db")
-    cursor = conn.cursor()
-    tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cursor.execute("""
-        INSERT INTO kayitli_hesaplar (tarih, proje_adi, derece, dakika, saniye, hedef_deger, a, b, c, d, oran, fark, notlar)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (tarih, item.proje_adi, item.derece, item.dakika, item.saniye, item.hedef_deger, item.a, item.b, item.c, item.d, item.oran, item.fark, item.notlar))
-    conn.commit()
-    conn.close()
-    return {"durum": "basarili", "mesaj": "Kombinasyon başarıyla kaydedildi!"}
+    try:
+        conn = sqlite3.connect("gearcalc.db")
+        cursor = conn.cursor()
+        tarih = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cursor.execute("""
+            INSERT INTO kayitli_hesaplar (tarih, proje_adi, derece, dakika, saniye, hedef_deger, a, b, c, d, oran, fark, notlar)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (tarih, item.proje_adi, item.derece, item.dakika, item.saniye, item.hedef_deger, item.a, item.b, item.c, item.d, item.oran, item.fark, item.notlar))
+        conn.commit()
+        conn.close()
+        return {"durum": "basarili", "mesaj": "Kombinasyon başarıyla kaydedildi!"}
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"hata": str(e)})
 
 # --- Kayıtlı Arşivi Getirme Endpoint'i ---
 @app.get("/api/kayitlar")
 def kayitlari_getir():
-    conn = sqlite3.connect("gearcalc.db")
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM kayitli_hesaplar ORDER BY id DESC")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    liste = []
-    for row in rows:
-        liste.append(dict(row))
-        
-    return liste
+    try:
+        conn = sqlite3.connect("gearcalc.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM kayitli_hesaplar ORDER BY id DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [dict(row) for row in rows]
+    except Exception as e:
+        return JSONResponse(status_code=500, content={"hata": str(e)})
 
 # --- React Frontend Entegrasyonu (Statik Dosyalar ve Kök Rota) ---
 if os.path.exists("dist"):
