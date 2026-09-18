@@ -10,7 +10,7 @@ import os
 import heapq
 import traceback
 
-app = FastAPI(title="GearCalc Pro API", version="2.7")
+app = FastAPI(title="GearCalc Pro API", version="2.8")
 
 # CORS Ayarları
 app.add_middleware(
@@ -82,7 +82,7 @@ class SaveGearRequest(BaseModel):
     fark: float
     notlar: str = ""
 
-# --- Şeffaf Hata Yakalamalı Hesaplama Endpoint'i ---
+# --- Hatasız ve Optimize Hesaplama Endpoint'i ---
 @app.post("/api/hesapla")
 def hesapla_kombinasyonlar(req: GearRequest):
     try:
@@ -95,6 +95,7 @@ def hesapla_kombinasyonlar(req: GearRequest):
         max_results = req.max_sonuc_sayisi
         
         best_heap = []
+        counter = 0  # Sözlük karşılaştırma hatasını önleyen sayaç
 
         for b in range(min_d, max_d + 1):
             for d in range(min_d, max_d + 1):
@@ -123,12 +124,14 @@ def hesapla_kombinasyonlar(req: GearRequest):
                         }
                         
                         if len(best_heap) < max_results:
-                            heapq.heappush(best_heap, (-fark, item))
+                            heapq.heappush(best_heap, (-fark, counter, item))
+                            counter += 1
                         else:
                             if fark < -best_heap[0][0]:
-                                heapq.heapreplace(best_heap, (-fark, item))
+                                heapq.heapreplace(best_heap, (-fark, counter, item))
+                                counter += 1
 
-        en_iyi_sonuclar = [item for _, item in sorted(best_heap, key=lambda x: -x[0])] if best_heap else []
+        en_iyi_sonuclar = [item for _, _, item in sorted(best_heap, key=lambda x: (-x[0], x[1]))] if best_heap else []
 
         return {
             "hedef_deger": round(hedef_deger, 9),
