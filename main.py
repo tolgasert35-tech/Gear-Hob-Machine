@@ -7,8 +7,9 @@ import sqlite3
 from datetime import datetime
 import math
 import os
+import heapq
 
-app = FastAPI(title="GearCalc Pro API", version="2.2")
+app = FastAPI(title="GearCalc Pro API", version="2.3")
 
 # CORS Ayarları
 app.add_middleware(
@@ -24,7 +25,6 @@ def init_db():
     conn = sqlite3.connect("gearcalc.db")
     cursor = conn.cursor()
     
-    # Tabloyu oluştur (Eğer yoksa)
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS kayitli_hesaplar (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +44,6 @@ def init_db():
         )
     """)
     
-    # Eski veritabanlarında 'proje_adi' sütunu eksikse otomatik ekle
     cursor.execute("PRAGMA table_info(kayitli_hesaplar)")
     sutunlar = [sutun[1] for sutun in cursor.fetchall()]
     if "proje_adi" not in sutunlar:
@@ -82,20 +81,25 @@ class SaveGearRequest(BaseModel):
     fark: float
     notlar: str = ""
 
-# --- Yüksek Performanslı Optimize Edilmiş Hesaplama Endpoint'i ---
+# --- Yüksek Performanslı ve Bellek Dostu Hesaplama Endpoint'i ---
 @app.post("/api/hesapla")
 def hesapla_kombinasyonlar(req: GearRequest):
     toplam_derece = req.derece + (req.dakika / 60.0) + (req.saniye / 3600.0)
     radyan = math.radians(toplam_derece)
     hedef_deger = math.sin(radyan) * req.sabit
     
-    kombinasyonlar = []
     min_d = req.min_disli
     max_d = req.max_disli
+    max_results = req.max_sonuc_sayisi
     
+    # En iyi sonuçları saklamak için min-heap yapısı (bellek dostu)
+    best_heap = []
+
     for b in range(min_d, max_d + 1):
         for d in range(min_d, max_d + 1):
             bd = b * d
+            if bd == 0:
+                continue
             for a in range(min_d, max_d + 1):
                 ideal_c = (hedef_deger * bd) / a
                 c_start = max(min_d, int(ideal_c) - 2)
@@ -105,17 +109,23 @@ def hesapla_kombinasyonlar(req: GearRequest):
                     oran = (a * c) / bd
                     fark = abs(oran - hedef_deger)
                     
-                    kombinasyonlar.append({
+                    item = {
                         "a": a,
                         "b": b,
                         "c": c,
                         "d": d,
                         "oran": oran,
                         "fark": fark
-                    })
+                    }
+                    
+                    if len(best_heap) < max_results:
+                        heapq.heappush(best_heap, (-fark, item))
+                    else:
+                        if fark < -best_heap[0][0]:
+                            heapq.heapreplace(best_heap, (-fark, item))
 
-    kombinasyonlar.sort(key=lambda x: x["fark"])
-    en_iyi_sonuclar = kombinasyonlar[:req.max_sonuc_sayisi]
+    # Heap üzerindeki sonuçları en küçük farka göre sırala
+    en_iyi_sonuclar = [item for _, item in sorted(best_heap, key=lambda x: -x[0])]
 
     return {
         "hedef_deger": round(hedef_deger, 9),
